@@ -1,0 +1,7 @@
+copy setupscripts/frameserver.sh to /etc/init.d
+sudo update-rc.d frameserver.sh defaults
+
+chmod u+s /opt/vc/bin/tvservice
+chmod u+s /bin/chvt
+
+use crontab -e to schedule screen on/off
