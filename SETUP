@@ -5,3 +5,12 @@ chmod u+s /opt/vc/bin/tvservice
 chmod u+s /bin/chvt
 
 use crontab -e to schedule screen on/off
+
+/home/pi/.config/lxsession/LXDE/autostart
+
+xset s off
+xset -dpms
+@/home/pi/frame/run_eog.sh
+
+sudo apt-get install xscreensaver -y
+
