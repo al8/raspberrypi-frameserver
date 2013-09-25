@@ -237,6 +237,8 @@ def resize(files, output_path, dst_size=2048):
             )
         except subprocess.CalledProcessError as ex:
             g_lgr.error(traceback.format_exc())
+            g_lgr.debug("removing file that could not be rotated %s" % dst)
+            os.remove(dst)
         new_files.add(dst)
 
     if cnt_convert: g_lgr.info("Resized %d files (%d skipped)" % (cnt_convert, cnt_skip))
