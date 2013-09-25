@@ -1,0 +1,25 @@
+DO set the raspberry pi to start X by default:
+sudo raspi-config
+go to "boot_behaviour"
+
+RUN these to get the paths right:
+login as user pi
+cd ~ && git clone https://github.com/al8/raspberrypi-frameserver.git
+ln -s /home/pi/raspberrypi-frameserver /home/pi/frame
+
+RUN these to get frameserver to run on startup:
+copy setupscripts/frameserver.sh to /etc/init.d
+sudo update-rc.d frameserver.sh defaults
+
+RUN these to make the screen_off/on scripts work (need to run these as root):
+chmod u+s /opt/vc/bin/tvservice
+chmod u+s /bin/chvt
+
+RUN:
+mkdir -p /home/pi/.config/lxsession/LXDE/ && echo "@/home/pi/frame/run_eog.sh" >> /home/pi/.config/lxsession/LXDE/autostart
+
+sudo apt-get install xscreensaver -y
+then use the mouse to get xscreensaver to not turn off the screen :(
+
+USE crontab -e to schedule screen on/off
+
