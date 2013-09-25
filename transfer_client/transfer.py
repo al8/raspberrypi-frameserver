@@ -11,6 +11,7 @@ import ConfigParser
 import subprocess
 import socket
 import zlib
+import traceback
 
 def setup_logging():
     global g_lgr
@@ -229,10 +230,13 @@ def resize(files, output_path, dst_size=2048):
         ]
         g_lgr.debug("auto rotate file '%s'" % (dst))
         g_lgr.debug(" ".join(args))
-        subprocess.check_output(
-            args,
-            stderr=subprocess.STDOUT,
-        )
+        try:
+            subprocess.check_output(
+                args,
+                stderr=subprocess.STDOUT,
+            )
+        except subprocess.CalledProcessError as ex:
+            g_lgr.error(traceback.format_exc())
         new_files.add(dst)
 
     if cnt_convert: g_lgr.info("Resized %d files (%d skipped)" % (cnt_convert, cnt_skip))
