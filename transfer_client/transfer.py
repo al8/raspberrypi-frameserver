@@ -7,11 +7,12 @@ from collections import namedtuple
 import logging
 import time
 
-import ConfigParser
 import subprocess
 import socket
 import zlib
 import traceback
+
+from plugins import filter_picasa
 
 def setup_logging():
     global g_lgr
@@ -59,8 +60,6 @@ transfer_params_t = namedtuple(
 )
 
 def get_dirs_files(path, directory_re, filename_re, process_stars):
-    meta = {}
-
     items = os.listdir(path)
     fullitems = map(lambda p: os.path.join(path, p), items)  # full path
 
@@ -86,30 +85,9 @@ def get_dirs_files(path, directory_re, filename_re, process_stars):
 
     # picasa star filter
     if process_stars:
-        picasa_ini = os.path.join(path, '.picasa.ini')
-        if os.path.isfile(picasa_ini):
-            star_files = set()
-            config = ConfigParser.ConfigParser()
-            config.read(picasa_ini)
-            g_lgr.debug(dir(config))
-            cnt_suppressed = 0
-            for s in config.sections():
-                g_lgr.debug("%s %s %s" % (s, config.items(s), ('suppress', 'yes') in config.items(s)))
-                if ('suppress', 'yes') in config.items(s):  # "Block from Uploading" flag in picasa
-                    cnt_suppressed += 1
-                    continue
-                g_lgr.debug("%s %s %s" % (s, config.items(s), ('star', 'yes') in config.items(s)))
-                if ('star', 'yes') in config.items(s):
-                    star_files.add(s.lower())
-            meta["pre_starred_filter"] = len(files)
-            files = filter(lambda e: os.path.basename(e).lower() in star_files, files)
-            if len(files) > 0 or cnt_suppressed > 0:
-                str_suppressed = (", %d files suppressed" % cnt_suppressed) if cnt_suppressed else ""
-                g_lgr.debug("picasa_ini filter: %d files starred%s, %d left in \"%s\"" % (len(star_files), str_suppressed, len(files), os.path.basename(path)))
-        else:
-            return dirs, [], meta
+        return filter_picasa.run(path, dirs, files, g_lgr)
 
-    return dirs, files, meta
+    return dirs, files
 
 def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=None):
     # gather viable image files into this set
@@ -120,7 +98,7 @@ def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=Non
     else:
         path = path_override
 
-    p_dirs, p_files, meta = get_dirs_files(
+    p_dirs, p_files = get_dirs_files(
         path,
         transfer_param.directory_re,
         transfer_param.filename_re,
@@ -128,11 +106,10 @@ def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=Non
 
     # log debug information
     logger = g_lgr.debug # if len(p_dirs) == 0 and len(p_files) == 0 else g_lgr.info
-    logger("dirs:%d files:%d path: \"%s\" meta: %s" % (
+    logger("dirs:%d files:%d path: \"%s\"" % (
             len(p_dirs),
             len(p_files),
             os.path.basename(path),
-            meta,
         )
     )
     for e in p_dirs:
