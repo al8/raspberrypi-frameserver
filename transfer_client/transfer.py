@@ -138,7 +138,7 @@ def get_files(transfer_param, path_override=None):
 
     return files
 
-def copy_resize_rotate(files, output_path, dst_size=2048):
+def copy_resize_rotate(files, output_path):
     """
     resize and rotate files
     returns resized files and would be resized files
@@ -147,6 +147,7 @@ def copy_resize_rotate(files, output_path, dst_size=2048):
     not_new_files = set()
     cnt_skip = 0
     cnt_convert = 0
+    dst_size = g_params.get("output_jpg_size", 2048)
     for idx, f in enumerate(sorted(files)):
         src, dst = f, os.path.join(output_path, os.path.basename(f))
 
@@ -158,10 +159,10 @@ def copy_resize_rotate(files, output_path, dst_size=2048):
             continue
 
         args = [
-            r"C:\Program Files\ImageMagick-6.8.6-Q16\convert.exe",
+            g_params["imagemagick_convert_binary"],
             src,
             "-quality",
-            "55",
+            str(g_params.get("output_jpg_quality", 55)),
             "-resize",
             "%dx%d>" % (dst_size, dst_size),
             dst,
@@ -176,7 +177,7 @@ def copy_resize_rotate(files, output_path, dst_size=2048):
         cnt_convert += 1
 
         args = [
-            r"D:\!Dropbox.com\Dropbox\raspberrypi-frameserver\transfer_client\jhead.exe",
+            g_params["jhead_binary"],
             "-autorot",
             dst,
         ]
@@ -186,6 +187,7 @@ def copy_resize_rotate(files, output_path, dst_size=2048):
             subprocess.check_output(
                 args,
                 stderr=subprocess.STDOUT,
+                cwd=os.path.dirname(g_params["jhead_binary"]),
             )
             new_files.add(dst)
         except subprocess.CalledProcessError as ex:
@@ -205,15 +207,8 @@ def upload(files):
     cnt = 0
     for idx, f in enumerate(sorted(files)):
         src = f
-        dst = "pi@192.168.1.34:photos/%s" % (os.path.basename(f).lower())
-        args = [
-            r"D:\Progs\pscp.exe",
-            "-batch",
-            "-pw",
-            "pi",
-            src,
-            dst,
-        ]
+        dst = "pi@%s:photos/%s" % (g_params["PI-HOST"], os.path.basename(f).lower())
+        args = g_params["scp_cmdline"] + [src, dst]
         g_lgr.info("uploading file '%s' to '%s' (%d of %d)" % (os.path.basename(src), dst, idx + 1, len(files)))
         g_lgr.debug(" ".join(args))
         subprocess.check_output(
@@ -284,11 +279,30 @@ def remote_delete_files(host, port, files):
     return recv
 
 def main():
-    HOST = "192.168.1.34"
-    PORT = 9999
+    global g_params
+    g_params = {
+        "PI-HOST": "192.168.1.34",
+        "PI-PORT": 9999,
+        "output_path": r"D:\!Dropbox.com\Dropbox\frame_transfer_output",
+        "scp_cmdline": [
+            r"D:\Progs\pscp.exe",
+            "-batch",
+            "-pw",
+            "pi",
+        ],
+        "output_jpg_size": 2048,
+        "output_jpg_quality": 55,
+        "imagemagick_convert_binary":
+            r"C:\Program Files\ImageMagick-6.8.6-Q16\convert.exe",
+        "jhead_binary":  # on windows, jpegtran.exe must be in the same path
+            r"D:\!Dropbox.com\Dropbox\raspberrypi-frameserver\transfer_client\jhead.exe",
+    }
+
+    HOST = g_params["PI-HOST"]
+    PORT = int(g_params["PI-PORT"])
 
     # output_path = r"D:\!digital_picture_frame_tmp"
-    output_path = r"D:\!Dropbox.com\Dropbox\frame_transfer_output"
+    output_path = g_params["output_path"]
     transfer_params_l = [
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
