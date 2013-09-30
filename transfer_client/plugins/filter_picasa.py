@@ -21,7 +21,7 @@ def _getconfig(path):
     g_path_config_map[path] = config
     return config
 
-def run(path, dirs, files, logger=None):
+def run(params, path, dirs, files, logger=None):
     """
     @param string path
     @param [] dirs

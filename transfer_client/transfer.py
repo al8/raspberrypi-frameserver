@@ -55,11 +55,11 @@ transfer_params_t = namedtuple(
         "filename_re",
         "most_recent_x",
         "hash_x",
-        "process_stars",
+        "local_filters",
     ]
 )
 
-def get_dirs_files(path, directory_re, filename_re, process_stars):
+def get_dirs_files(path, directory_re, filename_re, local_filters):
     items = os.listdir(path)
     fullitems = map(lambda p: os.path.join(path, p), items)  # full path
 
@@ -83,9 +83,14 @@ def get_dirs_files(path, directory_re, filename_re, process_stars):
                 re.IGNORECASE),
         files)
 
-    # picasa star filter
-    if process_stars:
-        return filter_picasa.run(path, dirs, files, g_lgr)
+    # per path filters
+    if local_filters:
+        for f_params in local_filters:
+            if isinstance(f_params, tuple):
+                f, params = f_params
+            else:
+                f, params = f_params, None
+            dirs, files = f.run(params, path, dirs, files, g_lgr)
 
     return dirs, files
 
@@ -102,7 +107,7 @@ def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=Non
         path,
         transfer_param.directory_re,
         transfer_param.filename_re,
-        transfer_param.process_stars)
+        transfer_param.local_filters)
 
     # log debug information
     logger = g_lgr.debug # if len(p_dirs) == 0 and len(p_files) == 0 else g_lgr.info
@@ -327,7 +332,7 @@ def main():
             "(DSC|IMG_)\d+[.]jpg",
             10,  # most_recent_x
             None,  # hash_x
-            False,  # process_stars
+            None,  # local_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
@@ -335,7 +340,7 @@ def main():
             "(DSC|IMG_)\d+[.]jpg",
             50,  # most_recent_x
             13,  # hash_x
-            False,  # process_stars
+            None,  # local_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
@@ -343,7 +348,7 @@ def main():
             "(DSC|IMG_)\d+[.]jpg",
             100,  # most_recent_x
             20,  # hash_x
-            False,  # process_stars
+            None,  # local_filters
         ),
 
         transfer_params_t(
@@ -352,7 +357,7 @@ def main():
             "\d{8}_\d{4}.+[.]jpg",
             None,  # most_recent_x
             10,  # hash_x
-            True,  # process_stars
+            [filter_picasa],  # local_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2012",
@@ -360,7 +365,7 @@ def main():
             "\d{8}_\d{4}.+[.]jpg",
             None,  # most_recent_x
             10,  # hash_x
-            True,  # process_stars
+            [filter_picasa],  # local_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
@@ -368,7 +373,7 @@ def main():
             "\d{8}_\d{4}.+[.]jpg",
             None,  # most_recent_x
             10,  # hash_x
-            True,  # process_stars
+            [filter_picasa],  # local_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
@@ -376,7 +381,7 @@ def main():
             "\d{8}_\d{4}.+[.]jpg",
             100,  # most_recent_x
             15,  # hash_x
-            True,  # process_stars
+            [filter_picasa],  # local_filters
         ),
     ]
 
