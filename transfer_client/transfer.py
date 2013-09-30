@@ -209,7 +209,7 @@ def resize(files, output_path, dst_size=2048):
             r"C:\Program Files\ImageMagick-6.8.6-Q16\convert.exe",
             src,
             "-quality",
-            "65",
+            "55",
             "-resize",
             "%dx%d>" % (dst_size, dst_size),
             dst,
@@ -224,7 +224,7 @@ def resize(files, output_path, dst_size=2048):
         cnt_convert += 1
 
         args = [
-            r"D:\!Dropbox.com\Dropbox\frame_transfer\jhead.exe",
+            r"D:\!Dropbox.com\Dropbox\raspberrypi-frameserver\transfer_client\jhead.exe",
             "-autorot",
             dst,
         ]
@@ -237,8 +237,8 @@ def resize(files, output_path, dst_size=2048):
             )
             new_files.add(dst)
         except subprocess.CalledProcessError as ex:
+            g_lgr.warning("removing file that could not be rotated %s" % dst)
             g_lgr.error(traceback.format_exc())
-            g_lgr.debug("removing file that could not be rotated %s" % dst)
             os.remove(dst)
 
     if cnt_convert: g_lgr.info("Resized %d files (%d skipped)" % (cnt_convert, cnt_skip))
