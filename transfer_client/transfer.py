@@ -12,7 +12,7 @@ import socket
 import zlib
 import traceback
 
-from plugins import filter_picasa
+from plugins import filter_picasa, filter_hash
 
 def setup_logging():
     global g_lgr
@@ -54,8 +54,8 @@ transfer_params_t = namedtuple(
         "directory_re",
         "filename_re",
         "most_recent_x",
-        "hash_x",
         "local_filters",
+        "global_filters",
     ]
 )
 
@@ -94,7 +94,7 @@ def get_dirs_files(path, directory_re, filename_re, local_filters):
 
     return dirs, files
 
-def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=None):
+def get_files(transfer_param, path_override=None, most_recent_x=None):
     # gather viable image files into this set
     files = set()
 
@@ -138,39 +138,13 @@ def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=Non
         #     print e
         files = set(zip(*(mtime_fname_l[:most_recent_x]))[1])
 
-    # get a 'random' selection of files
-    if hash_x and len(files) > 0:
-        ### configure hash slicing here
-        interval_min = 20  # different every 20 minutes / slices
-        slices = 4  # split the interval into this many slices
-        ###
-
-        tmp_files = set()
-        interval = interval_min * 60  # interval in seconds
-        interval_per_slice = interval / slices
-        photos_per_slice = max(1, int(round(hash_x / float(slices))))
-
-        now = int(time.time()) / interval_per_slice
-        # print "now", now
-        # print "photos_per_slice", photos_per_slice
-        # print "interval", interval
-        # print "interval_per_slice", interval_per_slice
-        # last = None
-        for t in range(now, now - slices, -1):
-            # print "t", t, (t - last) if last else ""
-            # last = t
-
-            hash_fname_l = []
-            hashorig = t  # different every interval
-            for e in files:
-                h = zlib.crc32(str(hashorig) + e)
-                hash_fname_l.append((h, e))
-            hash_fname_l.sort()
-            # for e in hash_fname_l:
-            #     print e
-            tmp_files |= set(zip(*(hash_fname_l[:photos_per_slice]))[1])
-        # files = set(zip(*(hash_fname_l[:hash_x]))[1])
-        files = tmp_files
+    if transfer_param.global_filters:
+        for f_params in transfer_param.global_filters:
+            if isinstance(f_params, tuple):
+                f, params = f_params
+            else:
+                f, params = f_params, None
+            _, files = f.run(params, None, None, files, g_lgr)
 
     return files
 
@@ -331,24 +305,24 @@ def main():
             "\d{4}[-]\d\d[-]\d\d[-].+",
             "(DSC|IMG_)\d+[.]jpg",
             10,  # most_recent_x
-            None,  # hash_x
             None,  # local_filters
+            None,  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
             "\d{4}[-]\d\d[-]\d\d[-].+",
             "(DSC|IMG_)\d+[.]jpg",
             50,  # most_recent_x
-            13,  # hash_x
             None,  # local_filters
+            [(filter_hash, {"pick": 13})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
             "\d{4}[-]\d\d[-]\d\d[-].+",
             "(DSC|IMG_)\d+[.]jpg",
             100,  # most_recent_x
-            20,  # hash_x
             None,  # local_filters
+            [(filter_hash, {"pick": 20})],  # global_filters
         ),
 
         transfer_params_t(
@@ -356,38 +330,38 @@ def main():
             "\d{8} .+",
             "\d{8}_\d{4}.+[.]jpg",
             None,  # most_recent_x
-            10,  # hash_x
             [filter_picasa],  # local_filters
+            [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2012",
             "\d{8} .+",
             "\d{8}_\d{4}.+[.]jpg",
             None,  # most_recent_x
-            10,  # hash_x
             [filter_picasa],  # local_filters
+            [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
             "\d{8} .+",
             "\d{8}_\d{4}.+[.]jpg",
             None,  # most_recent_x
-            10,  # hash_x
             [filter_picasa],  # local_filters
+            [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
             "\d{8} .+",
             "\d{8}_\d{4}.+[.]jpg",
             100,  # most_recent_x
-            15,  # hash_x
             [filter_picasa],  # local_filters
+            [(filter_hash, {"pick": 15})],  # global_filters
         ),
     ]
 
     files = set()
     for p in transfer_params_l:
-        files |= get_files(p, most_recent_x=p.most_recent_x, hash_x=p.hash_x)
+        files |= get_files(p, most_recent_x=p.most_recent_x)
     g_lgr.info("TOTAL FILES TO SYNC: %d (cached in %s)" % (len(files), output_path))
 
     # resize and move the files
