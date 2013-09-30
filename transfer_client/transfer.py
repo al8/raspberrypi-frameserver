@@ -92,14 +92,20 @@ def get_dirs_files(path, directory_re, filename_re, process_stars):
             config = ConfigParser.ConfigParser()
             config.read(picasa_ini)
             g_lgr.debug(dir(config))
+            cnt_suppressed = 0
             for s in config.sections():
+                g_lgr.debug("%s %s %s" % (s, config.items(s), ('suppress', 'yes') in config.items(s)))
+                if ('suppress', 'yes') in config.items(s):  # "Block from Uploading" flag in picasa
+                    cnt_suppressed += 1
+                    continue
                 g_lgr.debug("%s %s %s" % (s, config.items(s), ('star', 'yes') in config.items(s)))
                 if ('star', 'yes') in config.items(s):
                     star_files.add(s.lower())
             meta["pre_starred_filter"] = len(files)
             files = filter(lambda e: os.path.basename(e).lower() in star_files, files)
-            if len(files) > 0:
-                g_lgr.debug("picasa_ini filter: %d files starred, %d left" % (len(star_files), len(files)))
+            if len(files) > 0 or cnt_suppressed > 0:
+                str_suppressed = (", %d files suppressed" % cnt_suppressed) if cnt_suppressed else ""
+                g_lgr.debug("picasa_ini filter: %d files starred%s, %d left in \"%s\"" % (len(star_files), str_suppressed, len(files), os.path.basename(path)))
         else:
             return dirs, [], meta
 
@@ -262,7 +268,7 @@ def upload(files):
             src,
             dst,
         ]
-        g_lgr.info("uploading file '%s' to '%s' (%d of %d)" % (src, dst, idx + 1, len(files)))
+        g_lgr.info("uploading file '%s' to '%s' (%d of %d)" % (os.path.basename(src), dst, idx + 1, len(files)))
         g_lgr.debug(" ".join(args))
         subprocess.check_output(
             args,
@@ -400,7 +406,7 @@ def main():
     files = set()
     for p in transfer_params_l:
         files |= get_files(p, most_recent_x=p.most_recent_x, hash_x=p.hash_x)
-    g_lgr.info("TOTAL FILES TO SYNC: %d" % len(files))
+    g_lgr.info("TOTAL FILES TO SYNC: %d (cached in %s)" % (len(files), output_path))
 
     # resize and move the files
     new_files, not_new_files = resize(files, output_path)
@@ -431,5 +437,3 @@ def main():
 if __name__ == "__main__":
     setup_logging()
     main()
-    # print "sleeping for 20s"
-    time.sleep(5)
