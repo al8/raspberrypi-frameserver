@@ -138,9 +138,9 @@ def get_files(transfer_param, path_override=None):
 
     return files
 
-def resize(files, output_path, dst_size=2048):
+def copy_resize_rotate(files, output_path, dst_size=2048):
     """
-    resize files
+    resize and rotate files
     returns resized files and would be resized files
     """
     new_files = set()  # new files to be copied over
@@ -347,17 +347,15 @@ def main():
         files |= get_files(p)
     g_lgr.info("TOTAL FILES TO SYNC: %d (cached in %s)" % (len(files), output_path))
 
-    # resize and move the files
-    new_files, not_new_files = resize(files, output_path)
+    # resize rotate and copy the files
+    new_files, not_new_files = copy_resize_rotate(files, output_path)
+    all_output_files = new_files | not_new_files
     if len(new_files): g_lgr.info("FILES RESIZED: %d" % len(new_files))
 
-    # upload files
-    # upload(new_files)
-
-    script = cleanup_output_path(output_path, new_files | not_new_files)
+    script = cleanup_output_path(output_path, all_output_files)
 
     # list remote files to find ones to be deleted that don't exist locally
-    local_files = set(map(lambda f: os.path.basename(f).lower(), list(new_files | not_new_files)))
+    local_files = set(map(lambda f: os.path.basename(f).lower(), list(all_output_files)))
     remote_files = set(remote_get_files(HOST, PORT))
 
     # upload files that don't exist on remote
