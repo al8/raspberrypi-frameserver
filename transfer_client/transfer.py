@@ -159,24 +159,25 @@ def copy_resize_rotate(files, output_path):
 
         cnt_convert += 1
 
-        args = [
-            g_params["jhead_binary"],
-            "-autorot",
-            dst,
-        ]
-        g_lgr.debug("auto rotate file '%s'" % (dst))
-        g_lgr.debug(" ".join(args))
-        try:
-            subprocess.check_output(
-                args,
-                stderr=subprocess.STDOUT,
-                cwd=os.path.dirname(g_params["jhead_binary"]),
-            )
-            new_files.add(dst)
-        except subprocess.CalledProcessError as ex:
-            g_lgr.warning("removing file that could not be rotated %s" % dst)
-            g_lgr.error(traceback.format_exc())
-            os.remove(dst)
+        if g_params["jhead_binary"]:
+            args = [
+                g_params["jhead_binary"],
+                "-autorot",
+                dst,
+            ]
+            g_lgr.debug("auto rotate file '%s'" % (dst))
+            g_lgr.debug(" ".join(args))
+            try:
+                subprocess.check_output(
+                    args,
+                    stderr=subprocess.STDOUT,
+                    cwd=os.path.dirname(g_params["jhead_binary"]),
+                )
+                new_files.add(dst)
+            except subprocess.CalledProcessError as ex:
+                g_lgr.warning("removing file that could not be rotated %s" % dst)
+                g_lgr.error(traceback.format_exc())
+                os.remove(dst)
 
     if cnt_convert: g_lgr.info("Resized %d files (%d skipped)" % (cnt_convert, cnt_skip))
 
