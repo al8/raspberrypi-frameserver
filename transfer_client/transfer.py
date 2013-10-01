@@ -1,6 +1,5 @@
 import os
 import sys
-import re
 
 from collections import namedtuple
 
@@ -12,7 +11,11 @@ import socket
 import zlib
 import traceback
 
-from plugins import filter_picasa, filter_hash, filter_recent
+from plugins import \
+    filter_picasa, \
+    filter_hash, \
+    filter_recent, \
+    filter_regex
 
 def setup_logging():
     global g_lgr
@@ -51,36 +54,18 @@ def setup_logging():
 transfer_params_t = namedtuple(
     "transfer_params_t", [
         "path",
-        "directory_re",
-        "filename_re",
         "local_filters",
         "global_filters",
     ]
 )
 
-def get_dirs_files(path, directory_re, filename_re, local_filters):
+def get_dirs_files(path, local_filters):
     items = os.listdir(path)
     fullitems = map(lambda p: os.path.join(path, p), items)  # full path
 
     # split between dirs and files
     dirs = filter(os.path.isdir, fullitems)
     files = filter(os.path.isfile, fullitems)
-
-    # regex match filter
-    dirs = filter(
-        lambda e:
-            re.match(
-                directory_re,
-                os.path.basename(e),
-                re.IGNORECASE),
-        dirs)
-    files = filter(
-        lambda e:
-            re.match(
-                filename_re,
-                os.path.basename(e),
-                re.IGNORECASE),
-        files)
 
     # per path filters e.g. filter_picasa
     if local_filters:
@@ -104,8 +89,6 @@ def get_files(transfer_param, path_override=None):
 
     p_dirs, p_files = get_dirs_files(
         path,
-        transfer_param.directory_re,
-        transfer_param.filename_re,
         transfer_param.local_filters)
 
     # log debug information
@@ -306,52 +289,38 @@ def main():
     transfer_params_l = [
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
-            "\d{4}[-]\d\d[-]\d\d[-].+",
-            "(DSC|IMG_)\d+[.]jpg",
-            None,  # local_filters
+            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_)\d+[.]jpg"})],  # local_filters
             [(filter_recent, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
-            "\d{4}[-]\d\d[-]\d\d[-].+",
-            "(DSC|IMG_)\d+[.]jpg",
-            None,  # local_filters
+            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_)\d+[.]jpg"})],  # local_filters
             [(filter_recent, {"pick": 50}), (filter_hash, {"pick": 13})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
-            "\d{4}[-]\d\d[-]\d\d[-].+",
-            "(DSC|IMG_)\d+[.]jpg",
-            None,  # local_filters
+            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_)\d+[.]jpg"})],  # local_filters
             [(filter_recent, {"pick": 100}), (filter_hash, {"pick": 20})],  # global_filters
         ),
 
         transfer_params_t(
             r"D:\!Memories\Photos\2011",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            [filter_picasa],  # local_filters
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
             [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2012",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            [filter_picasa],  # local_filters
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
             [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            [filter_picasa],  # local_filters
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
             [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            [filter_picasa],  # local_filters
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
             [(filter_recent, {"pick": 100}), (filter_hash, {"pick": 15})],  # global_filters
         ),
     ]
