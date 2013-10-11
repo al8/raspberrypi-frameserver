@@ -1,17 +1,21 @@
 import os
 import sys
-import re
 
 from collections import namedtuple
 
 import logging
 import time
 
-import ConfigParser
 import subprocess
 import socket
 import zlib
 import traceback
+
+from plugins import \
+    filter_picasa, \
+    filter_hash, \
+    filter_recent, \
+    filter_regex
 
 def setup_logging():
     global g_lgr
@@ -50,17 +54,12 @@ def setup_logging():
 transfer_params_t = namedtuple(
     "transfer_params_t", [
         "path",
-        "directory_re",
-        "filename_re",
-        "most_recent_x",
-        "hash_x",
-        "process_stars",
+        "local_filters",
+        "global_filters",
     ]
 )
 
-def get_dirs_files(path, directory_re, filename_re, process_stars):
-    meta = {}
-
+def get_dirs_files(path, local_filters):
     items = os.listdir(path)
     fullitems = map(lambda p: os.path.join(path, p), items)  # full path
 
@@ -68,44 +67,18 @@ def get_dirs_files(path, directory_re, filename_re, process_stars):
     dirs = filter(os.path.isdir, fullitems)
     files = filter(os.path.isfile, fullitems)
 
-    # regex match filter
-    dirs = filter(
-        lambda e:
-            re.match(
-                directory_re,
-                os.path.basename(e),
-                re.IGNORECASE),
-        dirs)
-    files = filter(
-        lambda e:
-            re.match(
-                filename_re,
-                os.path.basename(e),
-                re.IGNORECASE),
-        files)
+    # per path filters e.g. filter_picasa
+    if local_filters:
+        for f_params in local_filters:
+            if isinstance(f_params, tuple):
+                f, params = f_params
+            else:
+                f, params = f_params, None
+            dirs, files = f.run(params, path, dirs, files, g_lgr)
 
-    # picasa star filter
-    if process_stars:
-        picasa_ini = os.path.join(path, '.picasa.ini')
-        if os.path.isfile(picasa_ini):
-            star_files = set()
-            config = ConfigParser.ConfigParser()
-            config.read(picasa_ini)
-            g_lgr.debug(dir(config))
-            for s in config.sections():
-                g_lgr.debug("%s %s %s" % (s, config.items(s), ('star', 'yes') in config.items(s)))
-                if ('star', 'yes') in config.items(s):
-                    star_files.add(s.lower())
-            meta["pre_starred_filter"] = len(files)
-            files = filter(lambda e: os.path.basename(e).lower() in star_files, files)
-            if len(files) > 0:
-                g_lgr.debug("picasa_ini filter: %d files starred, %d left" % (len(star_files), len(files)))
-        else:
-            return dirs, [], meta
+    return dirs, files
 
-    return dirs, files, meta
-
-def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=None):
+def get_files(transfer_param, path_override=None):
     # gather viable image files into this set
     files = set()
 
@@ -114,19 +87,16 @@ def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=Non
     else:
         path = path_override
 
-    p_dirs, p_files, meta = get_dirs_files(
+    p_dirs, p_files = get_dirs_files(
         path,
-        transfer_param.directory_re,
-        transfer_param.filename_re,
-        transfer_param.process_stars)
+        transfer_param.local_filters)
 
     # log debug information
     logger = g_lgr.debug # if len(p_dirs) == 0 and len(p_files) == 0 else g_lgr.info
-    logger("dirs:%d files:%d path: \"%s\" meta: %s" % (
+    logger("dirs:%d files:%d path: \"%s\"" % (
             len(p_dirs),
             len(p_files),
             os.path.basename(path),
-            meta,
         )
     )
     for e in p_dirs:
@@ -140,61 +110,27 @@ def get_files(transfer_param, path_override=None, most_recent_x=None, hash_x=Non
     for d in p_dirs:
         files |= get_files(transfer_param, path_override=d)
 
-    # only get most recent files
-    if most_recent_x and len(files) > 0:
-        mtime_fname_l = []
-        for e in files:
-            mtime_fname_l.append((os.path.getmtime(e), e))
-        mtime_fname_l.sort(reverse=True)
-        # for e in mtime_fname_l:
-        #     print e
-        files = set(zip(*(mtime_fname_l[:most_recent_x]))[1])
-
-    # get a 'random' selection of files
-    if hash_x and len(files) > 0:
-        ### configure hash slicing here
-        interval_min = 20  # different every 20 minutes / slices
-        slices = 4  # split the interval into this many slices
-        ###
-
-        tmp_files = set()
-        interval = interval_min * 60  # interval in seconds
-        interval_per_slice = interval / slices
-        photos_per_slice = max(1, int(round(hash_x / float(slices))))
-
-        now = int(time.time()) / interval_per_slice
-        # print "now", now
-        # print "photos_per_slice", photos_per_slice
-        # print "interval", interval
-        # print "interval_per_slice", interval_per_slice
-        # last = None
-        for t in range(now, now - slices, -1):
-            # print "t", t, (t - last) if last else ""
-            # last = t
-
-            hash_fname_l = []
-            hashorig = t  # different every interval
-            for e in files:
-                h = zlib.crc32(str(hashorig) + e)
-                hash_fname_l.append((h, e))
-            hash_fname_l.sort()
-            # for e in hash_fname_l:
-            #     print e
-            tmp_files |= set(zip(*(hash_fname_l[:photos_per_slice]))[1])
-        # files = set(zip(*(hash_fname_l[:hash_x]))[1])
-        files = tmp_files
+    # process filters like filter_recent, filter_hash
+    if transfer_param.global_filters:
+        for f_params in transfer_param.global_filters:
+            if isinstance(f_params, tuple):
+                f, params = f_params
+            else:
+                f, params = f_params, None
+            _, files = f.run(params, None, None, files, g_lgr)
 
     return files
 
-def resize(files, output_path, dst_size=2048):
+def copy_resize_rotate(files, output_path):
     """
-    resize files
+    resize and rotate files
     returns resized files and would be resized files
     """
     new_files = set()  # new files to be copied over
     not_new_files = set()
     cnt_skip = 0
     cnt_convert = 0
+    dst_size = g_params.get("output_jpg_size", 2048)
     for idx, f in enumerate(sorted(files)):
         src, dst = f, os.path.join(output_path, os.path.basename(f))
 
@@ -206,10 +142,10 @@ def resize(files, output_path, dst_size=2048):
             continue
 
         args = [
-            r"C:\Program Files\ImageMagick-6.8.6-Q16\convert.exe",
+            g_params["imagemagick_convert_binary"],
             src,
             "-quality",
-            "65",
+            str(g_params.get("output_jpg_quality", 55)),
             "-resize",
             "%dx%d>" % (dst_size, dst_size),
             dst,
@@ -223,23 +159,25 @@ def resize(files, output_path, dst_size=2048):
 
         cnt_convert += 1
 
-        args = [
-            r"D:\!Dropbox.com\Dropbox\frame_transfer\jhead.exe",
-            "-autorot",
-            dst,
-        ]
-        g_lgr.debug("auto rotate file '%s'" % (dst))
-        g_lgr.debug(" ".join(args))
-        try:
-            subprocess.check_output(
-                args,
-                stderr=subprocess.STDOUT,
-            )
-            new_files.add(dst)
-        except subprocess.CalledProcessError as ex:
-            g_lgr.error(traceback.format_exc())
-            g_lgr.debug("removing file that could not be rotated %s" % dst)
-            os.remove(dst)
+        if g_params["jhead_binary"]:
+            args = [
+                g_params["jhead_binary"],
+                "-autorot",
+                dst,
+            ]
+            g_lgr.debug("auto rotate file '%s'" % (dst))
+            g_lgr.debug(" ".join(args))
+            try:
+                subprocess.check_output(
+                    args,
+                    stderr=subprocess.STDOUT,
+                    cwd=os.path.dirname(g_params["jhead_binary"]),
+                )
+                new_files.add(dst)
+            except subprocess.CalledProcessError as ex:
+                g_lgr.warning("removing file that could not be rotated %s" % dst)
+                g_lgr.error(traceback.format_exc())
+                os.remove(dst)
 
     if cnt_convert: g_lgr.info("Resized %d files (%d skipped)" % (cnt_convert, cnt_skip))
 
@@ -253,16 +191,9 @@ def upload(files):
     cnt = 0
     for idx, f in enumerate(sorted(files)):
         src = f
-        dst = "pi@192.168.1.34:photos/%s" % (os.path.basename(f).lower())
-        args = [
-            r"D:\Progs\pscp.exe",
-            "-batch",
-            "-pw",
-            "pi",
-            src,
-            dst,
-        ]
-        g_lgr.info("uploading file '%s' to '%s' (%d of %d)" % (src, dst, idx + 1, len(files)))
+        dst = "pi@%s:photos/%s" % (g_params["PI-HOST"], os.path.basename(f).lower())
+        args = g_params["scp_cmdline"] + [src, dst]
+        g_lgr.info("uploading file '%s' to '%s' (%d of %d)" % (os.path.basename(src), dst, idx + 1, len(files)))
         g_lgr.debug(" ".join(args))
         subprocess.check_output(
             args,
@@ -332,87 +263,83 @@ def remote_delete_files(host, port, files):
     return recv
 
 def main():
-    HOST = "192.168.1.34"
-    PORT = 9999
+    global g_params
+    g_params = {
+        "PI-HOST": "192.168.1.34",
+        "PI-PORT": 9999,
+        "output_path": r"D:\!Dropbox.com\Dropbox\frame_transfer_output",
+        "scp_cmdline": [
+            r"D:\Progs\pscp.exe",
+            "-batch",
+            "-pw",
+            "pi",
+        ],
+        "output_jpg_size": 2048,
+        "output_jpg_quality": 55,
+        "imagemagick_convert_binary":
+            r"C:\Program Files\ImageMagick-6.8.6-Q16\convert.exe",
+        "jhead_binary":  # on windows, jpegtran.exe must be in the same path
+            r"D:\!Dropbox.com\Dropbox\raspberrypi-frameserver\transfer_client\jhead.exe",
+    }
+
+    HOST = g_params["PI-HOST"]
+    PORT = int(g_params["PI-PORT"])
 
     # output_path = r"D:\!digital_picture_frame_tmp"
-    output_path = r"D:\!Dropbox.com\Dropbox\frame_transfer_output"
+    output_path = g_params["output_path"]
     transfer_params_l = [
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
-            "\d{4}[-]\d\d[-]\d\d[-].+",
-            "(DSC|IMG_)\d+[.]jpg",
-            10,  # most_recent_x
-            None,  # hash_x
-            False,  # process_stars
+            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_)\d+[.]jpg"})],  # local_filters
+            [(filter_recent, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
-            "\d{4}[-]\d\d[-]\d\d[-].+",
-            "(DSC|IMG_)\d+[.]jpg",
-            50,  # most_recent_x
-            13,  # hash_x
-            False,  # process_stars
+            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_)\d+[.]jpg"})],  # local_filters
+            [(filter_recent, {"pick": 50}), (filter_hash, {"pick": 13})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
-            "\d{4}[-]\d\d[-]\d\d[-].+",
-            "(DSC|IMG_)\d+[.]jpg",
-            100,  # most_recent_x
-            20,  # hash_x
-            False,  # process_stars
+            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_)\d+[.]jpg"})],  # local_filters
+            [(filter_recent, {"pick": 100}), (filter_hash, {"pick": 20})],  # global_filters
         ),
 
         transfer_params_t(
             r"D:\!Memories\Photos\2011",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            None,  # most_recent_x
-            10,  # hash_x
-            True,  # process_stars
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
+            [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2012",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            None,  # most_recent_x
-            10,  # hash_x
-            True,  # process_stars
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
+            [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            None,  # most_recent_x
-            10,  # hash_x
-            True,  # process_stars
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
+            [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
             r"D:\!Memories\Photos\2013",
-            "\d{8} .+",
-            "\d{8}_\d{4}.+[.]jpg",
-            100,  # most_recent_x
-            15,  # hash_x
-            True,  # process_stars
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
+            [(filter_recent, {"pick": 100}), (filter_hash, {"pick": 15})],  # global_filters
         ),
     ]
 
     files = set()
     for p in transfer_params_l:
-        files |= get_files(p, most_recent_x=p.most_recent_x, hash_x=p.hash_x)
-    g_lgr.info("TOTAL FILES TO SYNC: %d" % len(files))
+        files |= get_files(p)
+    g_lgr.info("TOTAL FILES TO SYNC: %d (cached in %s)" % (len(files), output_path))
 
-    # resize and move the files
-    new_files, not_new_files = resize(files, output_path)
+    # resize rotate and copy the files
+    new_files, not_new_files = copy_resize_rotate(files, output_path)
+    all_output_files = new_files | not_new_files
     if len(new_files): g_lgr.info("FILES RESIZED: %d" % len(new_files))
 
-    # upload files
-    # upload(new_files)
-
-    script = cleanup_output_path(output_path, new_files | not_new_files)
+    script = cleanup_output_path(output_path, all_output_files)
 
     # list remote files to find ones to be deleted that don't exist locally
-    local_files = set(map(lambda f: os.path.basename(f).lower(), list(new_files | not_new_files)))
+    local_files = set(map(lambda f: os.path.basename(f).lower(), list(all_output_files)))
     remote_files = set(remote_get_files(HOST, PORT))
 
     # upload files that don't exist on remote
@@ -431,5 +358,3 @@ def main():
 if __name__ == "__main__":
     setup_logging()
     main()
-    # print "sleeping for 20s"
-    time.sleep(5)
