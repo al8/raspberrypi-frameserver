@@ -10,6 +10,7 @@ import subprocess
 import socket
 import zlib
 import traceback
+import tempfile
 
 from plugins import \
     filter_picasa, \
@@ -19,7 +20,7 @@ from plugins import \
 
 def setup_logging():
     global g_lgr
-    logfilename = "transfer.log"
+    logfilename = os.path.join(tempfile.gettempdir(), "transfer.log")
 
     # create logger
     g_lgr = logging.getLogger('transfer')
@@ -285,8 +286,6 @@ def main():
     HOST = g_params["PI-HOST"]
     PORT = int(g_params["PI-PORT"])
 
-    # output_path = r"D:\!digital_picture_frame_tmp"
-    output_path = g_params["output_path"]
     transfer_params_l = [
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
@@ -329,14 +328,14 @@ def main():
     files = set()
     for p in transfer_params_l:
         files |= get_files(p)
-    g_lgr.info("TOTAL FILES TO SYNC: %d (cached in %s)" % (len(files), output_path))
+    g_lgr.info("TOTAL FILES TO SYNC: %d (cached in %s)" % (len(files), g_params["output_path"]))
 
     # resize rotate and copy the files
-    new_files, not_new_files = copy_resize_rotate(files, output_path)
+    new_files, not_new_files = copy_resize_rotate(files, g_params["output_path"])
     all_output_files = new_files | not_new_files
     if len(new_files): g_lgr.info("FILES RESIZED: %d" % len(new_files))
 
-    script = cleanup_output_path(output_path, all_output_files)
+    script = cleanup_output_path(g_params["output_path"], all_output_files)
 
     # list remote files to find ones to be deleted that don't exist locally
     local_files = set(map(lambda f: os.path.basename(f).lower(), list(all_output_files)))
@@ -344,7 +343,7 @@ def main():
 
     # upload files that don't exist on remote
     upload_files = local_files - remote_files
-    upload(map(lambda f: os.path.join(output_path, f), list(upload_files)))
+    upload(map(lambda f: os.path.join(g_params["output_path"], f), list(upload_files)))
 
     # remove renote files
     delete_files = remote_files - local_files
