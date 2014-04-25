@@ -178,7 +178,10 @@ def copy_resize_rotate(files, output_path):
             except subprocess.CalledProcessError as ex:
                 g_lgr.warning("removing file that could not be rotated %s" % dst)
                 g_lgr.error(traceback.format_exc())
-                os.remove(dst)
+                try:
+                    os.remove(dst)
+                except:
+                    pass
 
     if cnt_convert: g_lgr.info("Resized %d files (%d skipped)" % (cnt_convert, cnt_skip))
 
@@ -266,7 +269,7 @@ def remote_delete_files(host, port, files):
 def main():
     global g_params
     g_params = {
-        "PI-HOST": "192.168.1.34",
+        "PI-HOST": None, #"192.168.1.34",
         "PI-PORT": 9999,
         "output_path": r"D:\!Dropbox.com\Dropbox\frame_transfer_output",
         "scp_cmdline": [
@@ -337,21 +340,24 @@ def main():
 
     script = cleanup_output_path(g_params["output_path"], all_output_files)
 
-    # list remote files to find ones to be deleted that don't exist locally
-    local_files = set(map(lambda f: os.path.basename(f).lower(), list(all_output_files)))
-    remote_files = set(remote_get_files(HOST, PORT))
+    if HOST is None:
+        g_lgr.info("No HOST specified, skipping upload")
+    else:
+        # list remote files to find ones to be deleted that don't exist locally
+        local_files = set(map(lambda f: os.path.basename(f).lower(), list(all_output_files)))
+        remote_files = set(remote_get_files(HOST, PORT))
 
-    # upload files that don't exist on remote
-    upload_files = local_files - remote_files
-    upload(map(lambda f: os.path.join(g_params["output_path"], f), list(upload_files)))
+        # upload files that don't exist on remote
+        upload_files = local_files - remote_files
+        upload(map(lambda f: os.path.join(g_params["output_path"], f), list(upload_files)))
 
-    # remove renote files
-    delete_files = remote_files - local_files
-    if len(delete_files): g_lgr.info("num files to be deleted remotely: %d" % len(delete_files))
-    for f in delete_files:
-        g_lgr.debug("delete file remotely: %s" % f)
-    if delete_files:
-        remote_delete_files(HOST, PORT, list(delete_files))
+        # remove renote files
+        delete_files = remote_files - local_files
+        if len(delete_files): g_lgr.info("num files to be deleted remotely: %d" % len(delete_files))
+        for f in delete_files:
+            g_lgr.debug("delete file remotely: %s" % f)
+        if delete_files:
+            remote_delete_files(HOST, PORT, list(delete_files))
 
 
 if __name__ == "__main__":
