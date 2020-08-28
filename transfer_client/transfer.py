@@ -195,7 +195,7 @@ def upload(files):
     cnt = 0
     for idx, f in enumerate(sorted(files)):
         src = f
-        dst = "pi@%s:photos/%s" % (g_params["PI-HOST"], os.path.basename(f).lower())
+        dst = "%s@%s:photos/%s" % (g_params["scp_user"], g_params["PI-HOST"], os.path.basename(f).lower())
         args = g_params["scp_cmdline"] + [src, dst]
         g_lgr.info("uploading file '%s' to '%s' (%d of %d)" % (os.path.basename(src), dst, idx + 1, len(files)))
         g_lgr.debug(" ".join(args))
@@ -269,9 +269,11 @@ def remote_delete_files(host, port, files):
 def main():
     global g_params
     g_params = {
-        "PI-HOST": None, #"192.168.1.34",
+        "PI-HOST": None,
+        # "PI-HOST": "192.168.1.34",
         "PI-PORT": 9999,
-        "output_path": r"D:\!Dropbox.com\Dropbox\frame_transfer_output",
+        "output_path": r"D:\!Dropbox.com\Dropbox (Personal)\frame_transfer_output",
+        # "scp_user": "pi",
         "scp_cmdline": [
             r"D:\Progs\pscp.exe",
             "-batch",
@@ -279,11 +281,11 @@ def main():
             "pi",
         ],
         "output_jpg_size": 2048,
-        "output_jpg_quality": 55,
+        "output_jpg_quality": 80,
         "imagemagick_convert_binary":
-            r"C:\Program Files\ImageMagick-6.8.6-Q16\convert.exe",
+            r"D:\Progs\ImageMagick-6.9.3-7-portable-Q16-x64\convert.exe",
         "jhead_binary":  # on windows, jpegtran.exe must be in the same path
-            r"D:\!Dropbox.com\Dropbox\raspberrypi-frameserver\transfer_client\jhead.exe",
+            r"D:\!Dropbox.com\Dropbox (Personal)\raspberrypi-frameserver\transfer_client\jhead.exe",
     }
 
     HOST = g_params["PI-HOST"]
@@ -292,7 +294,7 @@ def main():
     transfer_params_l = [
         transfer_params_t(
             r"D:\!Memories\staging area\Eye-Fi",
-            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_)\d+[.]jpg"})],  # local_filters
+            [(filter_regex, {"dir": "\d{4}[-]\d\d[-]\d\d[-].+", "file": "(DSC|IMG_|[PQ]A)\d+[.]jpg"})],  # local_filters
             [(filter_recent, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
@@ -322,7 +324,17 @@ def main():
             [(filter_hash, {"pick": 10})],  # global_filters
         ),
         transfer_params_t(
-            r"D:\!Memories\Photos\2013",
+            r"D:\!Memories\Photos\2014",
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
+            [(filter_recent, {"pick": 100}), (filter_hash, {"pick": 15})],  # global_filters
+        ),
+        transfer_params_t(
+            r"D:\!Memories\Photos\2015",
+            [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
+            [(filter_recent, {"pick": 100}), (filter_hash, {"pick": 15})],  # global_filters
+        ),
+        transfer_params_t(
+            r"D:\!Memories\Photos\2016",
             [(filter_regex, {"dir": "\d{8} .+", "file": "\d{8}_\d{4}.+[.]jpg",}), filter_picasa],  # local_filters
             [(filter_recent, {"pick": 100}), (filter_hash, {"pick": 15})],  # global_filters
         ),

@@ -2,5 +2,5 @@
 
 :start
 transfer.py
-waitfor /t 30 nothingnothing
+waitfor /t 120 nothingnothing
 goto start
